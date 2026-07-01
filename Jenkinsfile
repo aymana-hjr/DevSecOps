@@ -72,7 +72,15 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 echo "🐳 Construction des images Docker..."
-                sh "docker compose -f ${DOCKER_COMPOSE_FILE} build"
+                sh '''
+                    # Vérifie si docker est disponible avant de l'utiliser
+                    if ! command -v docker &> /dev/null; then
+                        echo "⚠️  Docker n'est pas accessible depuis Jenkins."
+                        echo "   Solution : monte /var/run/docker.sock dans le conteneur Jenkins."
+                        exit 1
+                    fi
+                    docker compose -f docker-compose.yml build
+                '''
                 // docker compose build = lit le docker-compose.yml et build toutes les images
             }
         }
@@ -83,8 +91,10 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo "🚀 Déploiement de l'application..."
-                sh "docker compose -f ${DOCKER_COMPOSE_FILE} up -d"
-                // up -d = lance tous les conteneurs en arrière-plan (detached mode)
+                sh '''
+                    docker compose -f docker-compose.yml up -d
+                    # up -d = lance tous les conteneurs en arrière-plan (detached mode)
+                '''
             }
         }
 
