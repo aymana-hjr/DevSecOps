@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  # Base de données MySQL
+  db:
+    image: mysql:8.0
+    container_name: devsecops-mysql-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: DevSecOps
+      MYSQL_ROOT_PASSWORD: Aymane2004@
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pAymane2004@"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # API Backend Spring Boot
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: devsecops-spring-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Aymane2004@
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Application Frontend React
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: devsecops-react-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
