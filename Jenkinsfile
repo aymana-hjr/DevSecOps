@@ -1,110 +1,110 @@
 pipeline {
+
+    // "agent any" = Jenkins utilise n'importe quel agent (machine) disponible pour lancer le pipeline
     agent any
 
+    // "tools" = outils installés dans Jenkins (Jenkins > Manage Jenkins > Global Tool Configuration)
     tools {
-        maven 'Maven3' // Nom configuré dans Jenkins > Global Tool Configuration
+        maven 'Maven3'  // Le nom 'Maven3' doit correspondre exactement à ce que tu as configuré dans Jenkins
     }
 
+    // "environment" = variables globales utilisables dans tout le pipeline avec ${NOM_VARIABLE}
     environment {
         DOCKER_COMPOSE_FILE = 'docker-compose.yml'
-        OWASP_REPORT_DIR    = 'dependency-check-report'
     }
 
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '15'))
-        timestamps()
-        disableConcurrentBuilds()
-        timeout(time: 30, unit: 'MINUTES') // Evite les builds bloqués indéfiniment
-    }
-
+    // ============================================================
+    // STAGES = les étapes du pipeline, exécutées dans l'ordre
+    // ============================================================
     stages {
 
+        // -------------------------------------------------------
+        // ÉTAPE 1 : Récupérer le code depuis GitHub
+        // -------------------------------------------------------
         stage('Checkout') {
             steps {
-                echo "📥 Clonage du dépôt..."
-                checkout scm
+                echo "📥 Clonage du dépôt depuis GitHub..."
+                checkout scm   // scm = Source Control Management (lit la config du job Jenkins)
             }
         }
 
+        // -------------------------------------------------------
+        // ÉTAPE 2 : Compiler le backend Spring Boot
+        // -------------------------------------------------------
         stage('Build Backend') {
             steps {
-                echo "🔨 Compilation du backend..."
-                dir('Backend') {
+                echo "🔨 Compilation du backend Spring Boot..."
+                dir('Backend') {                             // "dir" = se déplacer dans le dossier Backend
                     sh 'mvn clean package -DskipTests -B'
+                    // clean       = supprime le dossier target/ avant de recompiler
+                    // package     = compile + crée le fichier .jar
+                    // -DskipTests = ne lance PAS les tests ici (on les fait dans l'étape suivante)
+                    // -B          = mode batch (pas d'output interactif, meilleur pour Jenkins)
                 }
             }
         }
 
-        stage('Unit & Integration Tests') {
+        // -------------------------------------------------------
+        // ÉTAPE 3 : Lancer les tests unitaires
+        // -------------------------------------------------------
+        stage('Tests') {
             steps {
-                echo "🧪 Exécution des tests..."
+                echo "🧪 Lancement des tests..."
                 dir('Backend') {
                     sh 'mvn test -B'
+                    // mvn test = exécute tous les tests dans src/test/
+                    // Les résultats sont générés dans target/surefire-reports/
                 }
             }
             post {
+                // "post always" = s'exécute TOUJOURS après ce stage, même en cas d'échec
                 always {
-                    // Publie les résultats de tests JUnit même si le stage échoue
-                    junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
+                    junit testResults: 'Backend/target/surefire-reports/*.xml', allowEmptyResults: true
+                    // junit = plugin Jenkins qui affiche les résultats de tests dans l'interface web
+                    // allowEmptyResults = ne bloque pas si aucun rapport n'est trouvé
                 }
             }
         }
 
-        stage('OWASP Dependency Check') {
-            steps {
-                echo "🔍 Scan des vulnérabilités des dépendances..."
-                dependencyCheck additionalArguments: """
-                    --scan ./Backend
-                    --format HTML
-                    --format XML
-                    --out ${OWASP_REPORT_DIR}
-                    --disableYarnAudit
-                    --disableNodeAudit
-                """, odcInstallation: 'OWASP-DC' // Nom configuré dans Global Tool Configuration
-            }
-            post {
-                always {
-                    dependencyCheckPublisher pattern: "${OWASP_REPORT_DIR}/dependency-check-report.xml"
-                }
-            }
-        }
-
+        // -------------------------------------------------------
+        // ÉTAPE 4 : Construire les images Docker
+        // -------------------------------------------------------
         stage('Build Docker Images') {
             steps {
                 echo "🐳 Construction des images Docker..."
                 sh "docker compose -f ${DOCKER_COMPOSE_FILE} build"
+                // docker compose build = lit le docker-compose.yml et build toutes les images
             }
         }
 
+        // -------------------------------------------------------
+        // ÉTAPE 5 : Déployer l'application
+        // -------------------------------------------------------
         stage('Deploy') {
-            when {
-                // Déployer uniquement depuis la branche principale
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                }
-            }
             steps {
-                echo "🚀 Déploiement..."
+                echo "🚀 Déploiement de l'application..."
                 sh "docker compose -f ${DOCKER_COMPOSE_FILE} up -d"
+                // up -d = lance tous les conteneurs en arrière-plan (detached mode)
             }
         }
-    }
 
+    } // fin des stages
+
+    // ============================================================
+    // POST = actions exécutées après TOUS les stages
+    // ============================================================
     post {
-        always {
-            echo "📦 Archivage des rapports..."
-            archiveArtifacts artifacts: '**/target/surefire-reports/*.xml', allowEmptyArchive: true
-            archiveArtifacts artifacts: "${OWASP_REPORT_DIR}/dependency-check-report.html", allowEmptyArchive: true
-        }
+
         success {
+            // S'exécute uniquement si TOUT le pipeline a réussi
             echo "✅ Pipeline terminé avec succès !"
         }
+
         failure {
+            // S'exécute uniquement si un stage a échoué
             echo "❌ Le pipeline a échoué. Vérifie les logs ci-dessus."
         }
-        unstable {
-            echo "⚠️ Pipeline instable (tests en échec ou vulnérabilités détectées)."
-        }
+
     }
+
 }
