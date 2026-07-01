@@ -72,7 +72,7 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 echo "🐳 Construction des images Docker..."
-                sh "docker compose -f ${DOCKER_COMPOSE_FILE} build"
+                sh "docker-compose -f ${DOCKER_COMPOSE_FILE} build"
                 // docker compose build = lit le docker-compose.yml et build toutes les images
             }
         }
@@ -83,7 +83,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo "🚀 Déploiement de l'application..."
-                sh "docker compose -f ${DOCKER_COMPOSE_FILE} up -d"
+                sh "docker-compose -f ${DOCKER_COMPOSE_FILE} up -d"
                 // up -d = lance tous les conteneurs en arrière-plan (detached mode)
             }
         }
